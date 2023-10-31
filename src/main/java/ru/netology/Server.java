@@ -2,7 +2,9 @@ package ru.netology;
 
 import java.io.*;
 import java.net.ServerSocket;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -12,6 +14,8 @@ public class Server {
     private static Integer serverMaxPool;
     private boolean isBadConfig = false;
     private ExecutorService executorService;
+
+    public static Map<String, Map<String, Handler>> mapHandlers;
 
     public Server() {
         loadServerSettings();
@@ -52,6 +56,23 @@ public class Server {
         }
     }
 
+    public void addHandler(String httpMethod, String httpPath, Handler handler) {
+        if (mapHandlers == null) {
+            mapHandlers = new HashMap<>();
+        }
+
+        if (mapHandlers.containsKey(httpMethod)) {
+            Map<String, Handler> mapPath = mapHandlers.get(httpMethod);
+            mapPath.put(httpPath, handler);
+
+        } else {
+            Map<String, Handler> mapPath = new HashMap<>();
+            mapPath.put(httpPath, handler);
+
+            mapHandlers.put(httpMethod, mapPath);
+        }
+    }
+
     public void start() {
 
         if (isBadConfig) {
@@ -77,7 +98,7 @@ public class Server {
 
             while (!serverSocket.isClosed()) {
                 final var socket = serverSocket.accept();
-                    executorService.execute(new ServerRequestHandler(socket,validPaths));
+                executorService.execute(new ServerRequestHandler(socket, validPaths));
             }
         } catch (IOException e) {
             e.printStackTrace();

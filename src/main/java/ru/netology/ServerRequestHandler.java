@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 public class ServerRequestHandler implements Runnable {
     private final Socket socket;
@@ -30,15 +31,25 @@ public class ServerRequestHandler implements Runnable {
             final var requestLine = in.readLine();
             final var parts = requestLine.split(" ");
 
+            Request request = getRequest(requestLine);
+
+            System.out.println(requestLine);
+
             if (checkRequestContext(parts)) {
                 // just close socket
                 return;
             }
 
             final var path = parts[1];
-            System.out.println(path);
 
             if (!validPaths.contains(path)) {
+
+                Handler handler = getMapHandler(parts);
+
+                if (handler != null) {
+                    handler.handle(request, out);
+                }
+
                 sendWarningResponse(out);
                 return;
             }
@@ -64,6 +75,32 @@ public class ServerRequestHandler implements Runnable {
         } catch (IOException ex) {
             System.out.println(ex.getMessage());
         }
+    }
+
+    private Request getRequest(String requestLine) {
+        String[] parts = requestLine.split(" ");
+        return new RequestBuilder()
+                .setMethod(getMethodRequestLine(parts[0]))
+                .setHeaders(parts[1])
+                .build();
+    }
+
+    private httpReqMethod getMethodRequestLine(String part) {
+        return switch (part) {
+            case "POST" -> httpReqMethod.POST;
+            default -> httpReqMethod.GET;
+        };
+    }
+
+    private Handler getMapHandler(String[] parts) {
+        synchronized (Server.mapHandlers.get(parts[0])) {
+            Map<String, Handler> mapPath = Server.mapHandlers.get(parts[0]);
+
+            if (mapPath != null) {
+                return mapPath.get(parts[1]);
+            }
+        }
+        return null;
     }
 
     private void sendResponse(BufferedOutputStream out, byte[] content, String mimeType) throws IOException {
