@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.net.URISyntaxException;
 
 public class ServerRequestHandler implements Runnable {
     private final Socket socket;
@@ -31,20 +32,18 @@ public class ServerRequestHandler implements Runnable {
             final var requestLine = in.readLine();
             final var parts = requestLine.split(" ");
 
-            Request request = getRequest(requestLine);
-
-            System.out.println(requestLine);
-
             if (checkRequestContext(parts)) {
                 // just close socket
                 return;
             }
 
+            Request request = getRequest(requestLine);
+
             final var path = parts[1];
 
-            if (!validPaths.contains(path)) {
+            if (!validPaths.contains(request.getHeaders())) {
 
-                Handler handler = getMapHandler(parts);
+                Handler handler = getMapHandler(request);
 
                 if (handler != null) {
                     handler.handle(request, out);
@@ -72,12 +71,12 @@ public class ServerRequestHandler implements Runnable {
 
             sendResponse(out, filePath);
 
-        } catch (IOException ex) {
+        } catch (IOException | URISyntaxException ex) {
             System.out.println(ex.getMessage());
         }
     }
 
-    private Request getRequest(String requestLine) {
+    private Request getRequest(String requestLine) throws URISyntaxException {
         String[] parts = requestLine.split(" ");
         return new RequestBuilder()
                 .setMethod(getMethodRequestLine(parts[0]))
@@ -92,12 +91,14 @@ public class ServerRequestHandler implements Runnable {
         };
     }
 
-    private Handler getMapHandler(String[] parts) {
-        synchronized (Server.mapHandlers.get(parts[0])) {
-            Map<String, Handler> mapPath = Server.mapHandlers.get(parts[0]);
+    private Handler getMapHandler(Request request) {
+        System.out.println(request.getMethod());
+        System.out.println(request.getHeaders());
+        synchronized (Server.mapHandlers.get(request.getMethod().toString())) {
+            Map<String, Handler> mapPath = Server.mapHandlers.get(request.getMethod().toString());
 
             if (mapPath != null) {
-                return mapPath.get(parts[1]);
+                return mapPath.get(request.getHeaders());
             }
         }
         return null;
