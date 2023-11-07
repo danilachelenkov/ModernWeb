@@ -28,7 +28,26 @@ public class ApplicationServer {
                 responseStream.flush();
             }
         });
+        server.addHandler("POST", "/registration", new Handler() {
+            public void handle(Request request, BufferedOutputStream responseStream) throws IOException {
 
+                final var fullPathPage = request.getHeaders() + "_ok.html";
+
+                final var filePath = Path.of(".", "public", fullPathPage);
+                final var length = Files.size(filePath);
+
+                responseStream.write((
+                        "HTTP/1.1 200 OK\r\n" +
+                                "Content-Type: " + filePath + "\r\n" +
+                                "Content-Length: " + length + "\r\n" +
+                                "Connection: close\r\n" +
+                                "\r\n"
+                ).getBytes());
+
+                Files.copy(filePath, responseStream);
+                responseStream.flush();
+            }
+        });
 
         server.start();
     }

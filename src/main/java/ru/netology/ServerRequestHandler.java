@@ -1,20 +1,24 @@
 package ru.netology;
 
-import java.io.BufferedOutputStream;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
+import org.apache.http.protocol.HTTP;
+
+import java.io.*;
 import java.net.Socket;
+import java.net.URLDecoder;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.net.URISyntaxException;
+import java.util.stream.Stream;
 
 public class ServerRequestHandler implements Runnable {
     private final Socket socket;
     private final List<String> validPaths;
+    private final Map<String, String> mapHttpRequest = new HashMap<>();
+    private Request request;
 
     public ServerRequestHandler(Socket socket, List<String> validPaths) {
         this.socket = socket;
@@ -30,16 +34,45 @@ public class ServerRequestHandler implements Runnable {
             // read only request line for simplicity
             // must be in form GET /path HTTP/1.1
             final var requestLine = in.readLine();
+
+            System.out.println(requestLine);
+
             final var parts = requestLine.split(" ");
+
+            String line;
+
+            if (parts[0].equals("POST")) {
+                mapHttpRequest.put("headerHttpRequest", requestLine);
+
+                while ((line = in.readLine()) != null) {
+                    if (line.split(":").length == 2) {
+                        mapHttpRequest.put(line.split(":")[0], line.split(":")[1]);
+                    } else if (line.split(":").length == 1) {
+                        mapHttpRequest.put("params", line);
+                    }
+                }
+            }
 
             if (checkRequestContext(parts)) {
                 // just close socket
                 return;
             }
 
-            Request request = getRequest(requestLine);
+            if (mapHttpRequest.containsKey("headerHttpRequest")) {
+                if (mapHttpRequest.containsKey("Content-Type")) {
+                    if (mapHttpRequest.get("Content-Type").contains("application/x-www-form-urlencoded")) {
+                        request = getRequest(mapHttpRequest);
+                    }
+                } else {
+                    request = getRequest(requestLine);
+                }
+            } else {
+                request = getRequest(requestLine);
+            }
 
             final var path = parts[1];
+
+            System.out.println(path);
 
             if (!validPaths.contains(request.getHeaders())) {
 
@@ -47,14 +80,17 @@ public class ServerRequestHandler implements Runnable {
 
                 if (handler != null) {
                     handler.handle(request, out);
+                    return;
+                } else {
+                    sendWarningResponse(out);
+                    return;
                 }
-
-                sendWarningResponse(out);
-                return;
             }
+
 
             final var filePath = Path.of(".", "public", path);
             final var mimeType = Files.probeContentType(filePath);
+
 
             // special case for classic
             if (path.equals("/classic.html")) {
@@ -84,6 +120,22 @@ public class ServerRequestHandler implements Runnable {
                 .build();
     }
 
+    private Request getRequest(Map<String, String> mapRequest) throws URISyntaxException, UnsupportedEncodingException {
+        String body = "";
+        String[] parts = mapRequest.get("headerHttpRequest").split(" ");
+        if (mapRequest.containsKey("params")) {
+            body = URLDecoder.decode(mapRequest.get("params"), HTTP.UTF_8);
+        }
+
+        System.out.println(body);
+
+        return new RequestBuilder()
+                .setMethod(getMethodRequestLine(parts[0]))
+                .setHeaders(parts[1])
+                .setBody(body)
+                .build();
+    }
+
     private httpReqMethod getMethodRequestLine(String part) {
         return switch (part) {
             case "POST" -> httpReqMethod.POST;
@@ -92,8 +144,7 @@ public class ServerRequestHandler implements Runnable {
     }
 
     private Handler getMapHandler(Request request) {
-        System.out.println(request.getMethod());
-        System.out.println(request.getHeaders());
+
         synchronized (Server.mapHandlers.get(request.getMethod().toString())) {
             Map<String, Handler> mapPath = Server.mapHandlers.get(request.getMethod().toString());
 
